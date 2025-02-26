@@ -1,10 +1,11 @@
-use chrono::NaiveDateTime;
 use clap::Parser;
 use indicatif::ProgressBar;
 use prost::Message;
 use sqlx::{Pool, Sqlite};
 use std::{collections::HashMap, io::Write};
 use std::{fs::File, path::Path};
+use chrono::{TimeZone, Utc};
+use chrono_tz::America::Los_Angeles;
 
 include!(concat!(env!("OUT_DIR"), "/wechat.dump.rs"));
 
@@ -118,6 +119,13 @@ async fn friends(root: &str) -> anyhow::Result<HashMap<String, String>> {
 
 async fn messages(root: &str, name_map: &HashMap<String, String>) -> anyhow::Result<()> {
     let mut message_file = File::create("messages.md")?;
+
+     // Print name_map contents
+     writeln!(message_file, "# Name Map\n")?;
+     for (hash, name) in name_map {
+        writeln!(message_file, "  {} -> {}", hash, name)?;
+     }
+
     writeln!(message_file, "# Messages\n")?;
     let mut my_message_file = File::create("my_messages.md")?;
     for index in 1.. {
@@ -146,8 +154,8 @@ async fn messages(root: &str, name_map: &HashMap<String, String>) -> anyhow::Res
             if !table.starts_with("Chat_") {
                 continue;
             }
-            let messages: Vec<(i64, i64, i64, String)> = sqlx::query_as(&format!(
-                "SELECT CreateTime, Type, Des, Message FROM {} ORDER BY CreateTime",
+            let messages: Vec<(i64, i64, i64, i64, Vec<u8>)> = sqlx::query_as(&format!(
+                "SELECT CreateTime, Type, Des, MesLocalID, Message FROM {} ORDER BY CreateTime",
                 table
             ))
             .fetch_all(&pool)
@@ -158,27 +166,39 @@ async fn messages(root: &str, name_map: &HashMap<String, String>) -> anyhow::Res
                 .unwrap_or(&table);
             writeln!(message_file, "\n## {}\n", title)?;
 
-            for (create_time, ty, des, message) in messages {
-                // https://github.com/BlueMatthew/WechatExporter/blob/f9685ba6cc1932bb6f08c465cd2c4eda769538e0/WechatExporter/core/MessageParser.cpp#L58
-                // https://github.com/ppwwyyxx/wechat-dump/blob/master/wechat/msg.py
+            for (create_time, ty, des, mes_local_id, message) in messages {
                 let msg = match ty {
                     // text message
-                    1 => message,
-                    3 => format!("Image"),
-                    34 => format!("Voice"),
+                    1 => String::from_utf8_lossy(&message).into_owned(),
+                    3 => format!("Image {}", mes_local_id),
+                    34 => format!("Voice {}", mes_local_id),
                     42 => format!("Share User"),
-                    43 => format!("Video"),
+                    43 => format!("Video {}", mes_local_id),
                     47 => format!("Emoji"),
                     48 => format!("Location"),
                     49 => format!("App Message"),
                     50 => format!("Voice Call"),
                     // recall
-                    10000 => message,
+                    10000 => String::from_utf8_lossy(&message).into_owned(),
                     10002 => format!("System Message"),
                     _ => format!("Unknown message type: {}", ty),
                 };
-                let time = NaiveDateTime::from_timestamp_opt(create_time, 0).unwrap();
-                writeln!(message_file, "{:?} {}\n", time, msg)?;
+                let sender = if des == 0 {
+                    "Me"
+                } else {
+                    title
+                };
+
+                // Format the timestamp in Pacific Time
+                // Convert timestamp to Pacific Time
+                let utc_time = Utc.timestamp_opt(create_time, 0).unwrap();
+                let pacific_time = utc_time.with_timezone(&Los_Angeles);
+                writeln!(message_file, "{} {} {}\n",
+                    pacific_time.format("%Y-%m-%dT%H:%M:%S%Z"),
+                    sender,
+                    msg
+                )?;
+
                 if ty == 1 && des == 0 {
                     writeln!(my_message_file, "{}", msg)?;
                 }

@@ -148,6 +148,8 @@ async fn messages(root: &str, name_map: &HashMap<String, String>) -> anyhow::Res
 
         let pb = ProgressBar::new(tables.len() as u64);
         for (_ty, table) in tables {
+            // MesLocalID -> wxid, the sender of the message in a chat room
+            let mut message_sender_in_chatroom = HashMap::new();
             pb.inc(1);
 
             if !table.starts_with("Chat_") {

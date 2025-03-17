@@ -127,7 +127,6 @@ async fn messages(root: &str, name_map: &HashMap<String, String>) -> anyhow::Res
      }
 
     writeln!(message_file, "# Messages\n")?;
-    let mut my_message_file = File::create("my_messages.md")?;
     for index in 1.. {
         let contacts = Path::new(root).join(format!("message_{}.sqlite", index));
         if !contacts.exists() {
@@ -198,10 +197,6 @@ async fn messages(root: &str, name_map: &HashMap<String, String>) -> anyhow::Res
                     sender,
                     msg
                 )?;
-
-                if ty == 1 && des == 0 {
-                    writeln!(my_message_file, "{}", msg)?;
-                }
             }
         }
     }

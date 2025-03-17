@@ -149,7 +149,7 @@ async fn messages(root: &str, name_map: &HashMap<String, String>) -> anyhow::Res
         let pb = ProgressBar::new(tables.len() as u64);
         for (_ty, table) in tables {
             // MesLocalID -> wxid, the sender of the message in a chat room
-            let mut message_sender_in_chatroom = HashMap::new();
+            let mut message_sender_in_chatroom = HashMap::<String, String>::new();
             pb.inc(1);
 
             if !table.starts_with("Chat_") {
@@ -185,9 +185,13 @@ async fn messages(root: &str, name_map: &HashMap<String, String>) -> anyhow::Res
                     _ => format!("Unknown message type: {}", ty),
                 };
                 let sender = if des == 0 {
-                    "Me"
+                    if title.ends_with("@chatroom") {
+                        format!("{} Me", title)
+                    } else {
+                        "Me".to_string()
+                    }
                 } else {
-                    title
+                    title.to_string()
                 };
 
                 // Format the timestamp in Pacific Time
